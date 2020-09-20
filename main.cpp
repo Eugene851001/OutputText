@@ -6,14 +6,16 @@
 #define PI 3.1415
 
 void drawCircleText(HDC hdc, HWND hWnd, int x, int y);
+void drawTextTable(HDC hdc, HWND hWnd, int rows, int cols);
 
-char* strHello = "";
-const char* strAuthor = "Made by Eugene";
 char* strOutput;
-const float MIN_RADIUS = 50;
-float radius = MIN_RADIUS;
+float radius = 50;
 
+const int MAX_LEN = 20; 
 char strTemp[2];
+
+int cols = 5;
+int rows = 5;
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
@@ -31,13 +33,15 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			RECT rect;
 			GetClientRect(hWnd, &rect);
 			
+			drawTextTable(ps.hdc, hWnd, rows, cols);
+						
 			LOGFONT lf;
 			lf.lfCharSet = DEFAULT_CHARSET;
 			lf.lfPitchAndFamily = FIXED_PITCH;
 			strcpy(lf.lfFaceName, "Courier New");
 			lf.lfHeight = 20;
 			lf.lfWidth = 10;
-			lf.lfWeight = 40;
+			lf.lfWeight = 400;
 			lf.lfEscapement = 0;
 			lf.lfItalic = 1;
 			lf.lfUnderline = 0;
@@ -46,8 +50,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			HFONT hFont = CreateFontIndirect(&lf);
 			SelectObject(ps.hdc, hFont);
 			drawCircleText(ps.hdc, hWnd, rect.right / 2, rect.bottom / 2);
-		//	TextOut(ps.hdc, 300, 300, (LPCSTR)strHello, 5);
-
+			
 			DeleteObject(hFont);
 			EndPaint(hWnd, &ps);
 			break;
@@ -61,26 +64,20 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		}
 		case WM_CHAR:
 		{
+			if(wParam == VK_BACK)
+			{
+				strOutput[strlen(strOutput) - 1] = 0;
+				InvalidateRect(hWnd, NULL, TRUE);
+				break;
+			}
+			if(strlen(strOutput) >= MAX_LEN)
+				break;
 			strTemp[0] = wParam;
 			strTemp[1] = 0;
 			strcat(strOutput, strTemp);
 			InvalidateRect(hWnd, NULL, TRUE);
 			break;
 		}
-	/*	case WM_MOUSEWHEEL:
-		{
-			short delta = HIWORD(wParam);
-			if(delta > 0)
-			{
-				radius += 0.5;
-			}
-			else if(delta < 0)
-			{
-				radius -= 0.5;
-			}
-			InvalidateRect(hWnd, NULL, TRUE);
-			break;
-		}*/
 		default:
 			return DefWindowProc(hWnd, message, wParam, lParam);
 			break;
@@ -88,22 +85,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	return 0;
 }
 
-char *readFile(const char* fileName)
-{
-	FILE *f;
-	f = fopen(fileName, "r");
-	fseek(f, 0, SEEK_END);
-	int length = ftell(f);
-	fseek(f, 0, SEEK_SET);
-	char* buffer = (char*)malloc(length);
-	fread(buffer, 1, length, f);
-	fclose(f);
-	return buffer;
-}
-
 void drawCircleText(HDC hdc, HWND hWnd, int x, int y)
 {	
-	float radius = 50;
 	float angle = 3.1415 / 4;
 	
 	SetGraphicsMode(hdc, GM_ADVANCED);
@@ -120,7 +103,6 @@ void drawCircleText(HDC hdc, HWND hWnd, int x, int y)
 	
 	RECT rect;
 	GetClientRect(hWnd, &rect);
-	LPtoDP(hdc, (LPPOINT)&rect, 2);
 	int amount = strlen(strOutput);
 	float deltaAngle = 2 * PI / amount;
 	for(int  i = 0; i < amount; i++)
@@ -139,8 +121,43 @@ void drawCircleText(HDC hdc, HWND hWnd, int x, int y)
 		SetWorldTransform(hdc, &xform);
 		DrawText(hdc, strOutput + i, 1, &rect, DT_CENTER);
 	}
+}
+
+//m - rows, n - cols
+void drawTextTable(HDC hdc, HWND hWnd, int rows, int cols)
+{
+	RECT rect;
+	GetClientRect(hWnd, &rect);
+	
+	int width = rect.right / cols;
+	int height = rect.bottom / rows;
+	
+	LOGFONT lf;
+	lf.lfCharSet = DEFAULT_CHARSET;
+	lf.lfPitchAndFamily = FIXED_PITCH;
+	strcpy(lf.lfFaceName, "Times New Roman");
+	lf.lfHeight = height * 0.5;
+	lf.lfWidth = width * 0.5;
+	lf.lfWeight = 400;
+	lf.lfEscapement = 0;
+	lf.lfItalic = 0;
+	lf.lfUnderline = 0;
+	lf.lfStrikeOut = 0;
+	
+	HFONT hFont = CreateFontIndirect(&lf);
+	SelectObject(hdc, hFont);
+	
+	int length = strlen(strOutput);
+	for(int i = 0; i < rows; i++)
+		for(int j = 0; j < cols; j++)
+		{
+			int index = i * cols + j;
+			if(index < length)
+				TextOut(hdc, j * width, i * height, strOutput + index, 1);
+		}
 	
 	
+	DeleteObject(hFont); 
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev, LPSTR lpCmdLine, int nCmdShow)
@@ -175,8 +192,8 @@ WNDCLASSEX wc;
 		return 0;
 	}
 	
-	strOutput = (char*)malloc(strlen(strHello));
-	strcpy(strOutput, strHello);
+	strOutput = (char*)malloc(2);
+	strcpy(strOutput, " ");
 	ShowWindow(hWnd, nCmdShow);
 	UpdateWindow(hWnd);
 	
