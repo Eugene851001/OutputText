@@ -18,6 +18,13 @@
 #define IDM_SAVE 3
 #define IDM_OPEN 4
 
+const int INITIAL_HEIGHT = 480;
+const int INITIAL_WIDTH = 640;
+
+#define WINDOW_MIN_WIDTH  300;
+#define WINDOW_MIN_HEIGHT  400;
+
+
 int currentMode = MODE_CIRCLE;
 
 void drawCircleText(HDC hdc, HWND hWnd, int x, int y);
@@ -28,7 +35,6 @@ void WriteFile(const char* fileName);
 void loadTable(const char* fileName);
 void drawSecondTextTable(HDC hdc, HWND hWnd);
 int getColsAmount();
-char* showOpenTableDialog(HWND hWnd);
 
 typedef std::vector<char*> TTableRow;
 typedef std::vector<TTableRow> TTable;
@@ -36,49 +42,14 @@ typedef std::vector<TTableRow> TTable;
 TTable textTable;
 
 char* strOutput;
-float radius = 50;
+const float INITIAL_RADIUS = 100;
+float radius = INITIAL_RADIUS;
 
 const int MAX_LEN = 20; 
 char strTemp[2];
 
 int cols = 5;
 int rows = 5;
-
-char* showOpenTableDialog(HWND hWnd)
-{
-	OPENFILENAME ofn;
-    char szFile[260];
-
-	ZeroMemory(&ofn, sizeof(ofn));
-	ofn.lStructSize = sizeof(ofn);
-	ofn.hwndOwner = hWnd;
-	ofn.lpstrFile = szFile;
-	// Set lpstrFile[0] to '\0' so that GetOpenFileName does not 
-	// use the contents of szFile to initialize itself.
-	ofn.lpstrFile[0] = '\0';
-	ofn.nMaxFile = sizeof(szFile);
-	ofn.lpstrFilter = "All\0*.*\0Text\0*.TXT\0";
-	ofn.nFilterIndex = 1;
-	ofn.lpstrFileTitle = NULL;
-	ofn.nMaxFileTitle = 0;
-	ofn.lpstrInitialDir = NULL;
-	ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
-	
-	
-	if(GetOpenFileName(&ofn) == TRUE)
-	{
-		loadTable(szFile);
-		return ofn.lpstrFile;
-	}
-	else
-	{
-		DWORD error = CommDlgExtendedError();
-		char buffer[256];
-		itoa(error, buffer, 16);
-		MessageBox(hWnd, buffer, "Error", MB_OK | MB_ICONERROR);
-		return NULL;
-	}
-}
 
 void loadTable(const char* fileName)
 {
@@ -139,10 +110,32 @@ int getColsAmount()
 	return colsAmount;
 }
 
+HFONT getSecondTableFont(HWND hWnd, int cols, int rows)
+{
+	RECT rect;
+	GetClientRect(hWnd, &rect);
+	LOGFONT lf;
+	lf.lfCharSet = DEFAULT_CHARSET;
+	lf.lfPitchAndFamily = FIXED_PITCH;
+	strcpy(lf.lfFaceName, "Times New Roman");
+	lf.lfHeight = 50 * rect.bottom / INITIAL_HEIGHT / rows;
+	lf.lfWidth = 50 * rect.right / INITIAL_WIDTH / cols;
+	lf.lfWeight = 400;
+	lf.lfEscapement = 0;
+	lf.lfItalic = 0;
+	lf.lfUnderline = 0;
+	lf.lfStrikeOut = 0; 
+
+	HFONT hFont = CreateFontIndirect(&lf);
+	return hFont;
+}
+
 void drawSecondTextTable(HDC hdc, HWND hWnd)
 {
 	int cols = getColsAmount();
 	int rows = textTable.size();
+	HFONT hFont = getSecondTableFont(hWnd, cols, rows);
+	SelectObject(hdc, hFont);
 	RECT rect;
 	GetClientRect(hWnd, &rect);
 	int width = rect.right / cols;
@@ -162,6 +155,7 @@ void drawSecondTextTable(HDC hdc, HWND hWnd)
 				DrawTextA(hdc, textTable[row][col], -1, &cellRect, DT_CENTER | DT_WORDBREAK);
 		}
 	}
+	DeleteObject(hFont);
 }
 
 void addMenu(HWND hWnd)
@@ -172,8 +166,6 @@ void addMenu(HWND hWnd)
 	AppendMenuA(hModeSubmenu, MF_STRING, IDM_CIRCLE, "Circle");
 	AppendMenuA(hModeSubmenu, MF_STRING, IDM_TABLE1, "Table1");
 	AppendMenuA(hModeSubmenu, MF_STRING, IDM_TABLE2, "Table2");
-	AppendMenuA(hMenu, MF_STRING, IDM_SAVE, "Save");
-	AppendMenuA(hMenu, MF_STRING, IDM_OPEN, "Open");
 	SetMenu(hWnd, hMenu);
 }
 
@@ -199,18 +191,15 @@ void onCommand(HWND hWnd, WPARAM wParam)
 			WriteFile("Output.txt");
 			MessageBox(hWnd, "Saved", "OK", MB_OK | MB_ICONINFORMATION);
 			break;
-		case IDM_OPEN:
-		{
-			char* fileName;
-			fileName = showOpenTableDialog(hWnd);
-			if(fileName)
-				MessageBox(hWnd, fileName, "OK", MB_OK | MB_ICONINFORMATION);
-			else
-				MessageBox(hWnd, "Something wrong", "Not ok", MB_OK | MB_ICONERROR);
-			break;
-		}
-		
 	}
+}
+
+VOID OnTryGetResizeInfo(LPARAM lParam)
+{
+    LPMINMAXINFO lpMMI;
+    lpMMI = (LPMINMAXINFO)lParam;
+    lpMMI->ptMinTrackSize.x = WINDOW_MIN_WIDTH;
+    lpMMI->ptMinTrackSize.y = WINDOW_MIN_HEIGHT;
 }
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
@@ -272,6 +261,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			onCommand(hWnd, wParam);
 			break;
 		}
+		case WM_GETMINMAXINFO: 
+			OnTryGetResizeInfo(lParam);
+			break;
 		default:
 			return DefWindowProc(hWnd, message, wParam, lParam);
 			break;
@@ -279,20 +271,22 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	return 0;
 }
 
-HFONT getCircleFont()
+HFONT getCircleFont(HWND hWnd)
 {
+	RECT rect;
+	GetClientRect(hWnd, &rect);
 	LOGFONT lf;
 	lf.lfCharSet = DEFAULT_CHARSET;
 	lf.lfPitchAndFamily = FIXED_PITCH;
 	strcpy(lf.lfFaceName, "Courier New");
-	lf.lfHeight = 20;
-	lf.lfWidth = 10;
+	lf.lfHeight = 20 * rect.bottom / INITIAL_HEIGHT;
+	lf.lfWidth = 15 * rect.right / INITIAL_WIDTH;
 	lf.lfWeight = 400;
 	lf.lfEscapement = 0;
-	lf.lfItalic = 1;
+	lf.lfItalic = 0;
 	lf.lfUnderline = 0;
 	lf.lfStrikeOut = 0; 
-				
+
 	HFONT hFont = CreateFontIndirect(&lf);
 	return hFont;
 }
@@ -300,11 +294,21 @@ HFONT getCircleFont()
 void drawCircleText(HDC hdc, HWND hWnd, int x, int y)
 {	
 
-	HFONT hFont = getCircleFont();
+	HFONT hFont = getCircleFont(hWnd);
 	SelectObject(hdc, hFont);
 	
 	float angle = 3.1415 / 4;
 	
+	RECT rect;
+	GetClientRect(hWnd, &rect);
+	if(rect.bottom / INITIAL_HEIGHT > rect.right / INITIAL_WIDTH)
+	{
+		radius = INITIAL_RADIUS * rect.bottom / INITIAL_HEIGHT;
+	}
+	else
+	{
+		radius = INITIAL_RADIUS * rect.right / INITIAL_WIDTH;
+	}
 	
 	XFORM xform;
 	
@@ -317,17 +321,15 @@ void drawCircleText(HDC hdc, HWND hWnd, int x, int y)
 	SetGraphicsMode(hdc, GM_ADVANCED);
 	SetWorldTransform(hdc, &xform);
 	
-	RECT rect;
-	GetClientRect(hWnd, &rect);
 	int amount = strlen(strOutput);
-	float deltaAngle = 2 * PI / amount;
+	float deltaAngle = 2 * PI / MAX_LEN;
 	for(int  i = 0; i < amount; i++)
 	{
 		angle = i * deltaAngle;
-		rect.left = -10;
-		rect.top = -10;
-		rect.right = 10;
-		rect.bottom = 10;
+		rect.left = -20;
+		rect.top = -20;
+		rect.right = 20;
+		rect.bottom = 20;
 		xform.eM11 = cos(angle + PI / 2);
 		xform.eM12 = sin(angle + PI / 2);
 		xform.eM21 = -sin(angle + PI / 2);
@@ -409,8 +411,8 @@ WNDCLASSEX wc;
 	hWnd = CreateWindowEx(WS_EX_CLIENTEDGE,"WindowClass","Laba2_OSiSP", WS_OVERLAPPEDWINDOW,
 		CW_USEDEFAULT, 
 		CW_USEDEFAULT, 
-		640, 
-		480, 
+		INITIAL_WIDTH, 
+		INITIAL_HEIGHT, 
 		NULL,NULL,hInstance,NULL);
 
 	if(hWnd == NULL) { 
