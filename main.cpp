@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <vector>
+#include <cmath>
 
 #define PI 3.1415
 
@@ -22,8 +23,10 @@ const int INITIAL_HEIGHT = 480;
 const int INITIAL_WIDTH = 640;
 
 #define WINDOW_MIN_WIDTH  300;
-#define WINDOW_MIN_HEIGHT  400;
+#define WINDOW_MIN_HEIGHT  450;
 
+const int FONTS_AMOUNT = 4;
+LPCSTR fontsNames[FONTS_AMOUNT] = {"Times New Roman", "Courier New", "Broadway", "CommercialScript BT"};
 
 int currentMode = MODE_CIRCLE;
 
@@ -35,9 +38,12 @@ void WriteFile(const char* fileName);
 void loadTable(const char* fileName);
 void drawSecondTextTable(HDC hdc, HWND hWnd);
 int getColsAmount();
+int getMaxElementLength();
 
 typedef std::vector<char*> TTableRow;
 typedef std::vector<TTableRow> TTable;
+
+std::vector<int> cellHeights;
 
 TTable textTable;
 
@@ -50,6 +56,41 @@ char strTemp[2];
 
 int cols = 5;
 int rows = 5;
+
+int tableCellWidth;
+int widthCellInChars = 11;
+
+int getMaxElementLength(TTableRow row)
+{
+	int max = 0;
+	for(int i = 0; i < row.size(); i++)
+	{
+		int length = strlen(row[i]);
+		if(length > max)
+			max = length;
+	}	
+	return max;
+}
+
+void getCellHeights(HDC hdc)
+{
+	cellHeights.clear();
+	TEXTMETRIC tm;
+	GetTextMetrics(hdc, &tm);
+	int charHeight = tm.tmHeight + tm.tmExternalLeading + tm.tmInternalLeading;
+	int charWidth = tm.tmAveCharWidth + tm.tmOverhang;
+	widthCellInChars = tableCellWidth / charWidth;
+	if(tableCellWidth % charWidth)
+		widthCellInChars++;
+	for(int i = 0; i < textTable.size(); i++)
+	{
+		int maxElementLength = getMaxElementLength(textTable[i]);
+		int charRowsAmount =  maxElementLength/ widthCellInChars;
+	//	if(maxElementLength % widthCellInChars)
+			charRowsAmount++;
+		cellHeights.push_back(charHeight * charRowsAmount);
+	}
+}
 
 void loadTable(const char* fileName)
 {
@@ -65,6 +106,14 @@ void loadTable(const char* fileName)
 	fclose(f);
 	buffer[length] = 0;
 	
+	for(int i = 0; i < textTable.size(); i++)
+	{
+		for(int j = 0; j < textTable[i].size(); j++)
+		{
+			free(textTable[i][j]);
+		}
+	}
+	textTable.clear();
 	TTableRow* row = new TTableRow();
 	char c;
 	std::vector<char>* strTemp = new std::vector<char>();
@@ -110,17 +159,16 @@ int getColsAmount()
 	return colsAmount;
 }
 
-HFONT getSecondTableFont(HWND hWnd, int cols, int rows)
+HFONT getSecondTableFont(HWND hWnd, int fontNum, int cols, int rows)
 {
 	RECT rect;
 	GetClientRect(hWnd, &rect);
 	LOGFONT lf;
 	lf.lfCharSet = DEFAULT_CHARSET;
-	lf.lfPitchAndFamily = FIXED_PITCH;
-	strcpy(lf.lfFaceName, "Times New Roman");
+	strcpy(lf.lfFaceName, fontsNames[fontNum]);
 	lf.lfHeight = 50 * rect.bottom / INITIAL_HEIGHT / rows;
 	lf.lfWidth = 50 * rect.right / INITIAL_WIDTH / cols;
-	lf.lfWeight = 400;
+	lf.lfWeight = 300;
 	lf.lfEscapement = 0;
 	lf.lfItalic = 0;
 	lf.lfUnderline = 0;
@@ -134,28 +182,47 @@ void drawSecondTextTable(HDC hdc, HWND hWnd)
 {
 	int cols = getColsAmount();
 	int rows = textTable.size();
-	HFONT hFont = getSecondTableFont(hWnd, cols, rows);
+	HFONT hFont = getSecondTableFont(hWnd, 1, cols, rows);
 	SelectObject(hdc, hFont);
 	RECT rect;
+	int tablePenWidth = 2; 
 	GetClientRect(hWnd, &rect);
 	int width = rect.right / cols;
-	int height = rect.bottom / rows;
+	int height;
+	tableCellWidth = width;
+	getCellHeights(hdc);
+	RECT cellRect;
+	cellRect.top = 0;
 	for(int row = 0; row < rows; row++)
 	{
+
+		height = cellHeights[row];
+		cellRect.bottom = cellRect.top + height;
 		for(int col = 0; col < cols; col++)
 		{
-			RECT cellRect;
+			HFONT hFont = getSecondTableFont(hWnd, (row * cols + col) % FONTS_AMOUNT, cols, rows);
+			SelectObject(hdc, hFont);
 			cellRect.left = col * width;
 			cellRect.right = cellRect.left + width;
-			cellRect.top = row * height;
-			cellRect.bottom = cellRect.top + height;
 			Rectangle(hdc, cellRect.left, cellRect.top, cellRect.right, cellRect.bottom);
-			cellRect.top += height / 2;
+		/*	char buffer[260];
+			itoa(height, buffer, 10);
+			MessageBoxA(hWnd, buffer, "OK", MB_OK);*/
+		//	cellRect.top += height / 2;
 			if(col <= textTable[row].size())
+			{
+				RECT temp = cellRect;
+				cellRect.left += tablePenWidth;
+				cellRect.right -= tablePenWidth;
+				cellRect.bottom -= tablePenWidth;
+				cellRect.top += tablePenWidth;
 				DrawTextA(hdc, textTable[row][col], -1, &cellRect, DT_CENTER | DT_WORDBREAK);
+				cellRect = temp;
+			}
+			DeleteObject(hFont);
 		}
+		cellRect.top += height;
 	}
-	DeleteObject(hFont);
 }
 
 void addMenu(HWND hWnd)
